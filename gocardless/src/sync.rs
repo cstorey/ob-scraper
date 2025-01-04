@@ -4,7 +4,7 @@ use chrono::{Datelike, Days, Local, Months, NaiveDate};
 use clap::Parser;
 use color_eyre::{eyre::eyre, Result};
 use serde::{Deserialize, Serialize};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncWriteExt, BufWriter};
 use tracing::{debug, instrument};
 use uuid::Uuid;
 
@@ -88,12 +88,12 @@ impl Cmd {
 
         let account_base = provider_config.output.join(&details.iban);
 
-        self.write_file(&account_base.join("account-details.json"), &details)
+        self.write_file(&account_base.join("account-details.json"), &[details])
             .await?;
 
         let balances = fetch_balances(client, account_id).await?;
 
-        self.write_file(&account_base.join("balances.json"), &balances)
+        self.write_file(&account_base.join("balances.json"), &balances.balances)
             .await?;
 
         let transactions = fetch_transactions(client, account_id, start_date, end_date).await?;
@@ -122,7 +122,7 @@ impl Cmd {
 
         for (month, transactions) in by_month {
             let fname = month
-                .map(|month| month.format("%Y-%m.json").to_string())
+                .map(|month| month.format("%Y-%m.jsonl").to_string())
                 .unwrap_or_else(|| "undated.json".to_owned());
             let path = account_base.join(fname);
             self.write_file(&path, &transactions).await?;
@@ -135,14 +135,21 @@ impl Cmd {
     async fn write_file(
         &self,
         path: &Path,
-        data: impl Serialize,
+        data: &[impl Serialize],
     ) -> Result<(), color_eyre::eyre::Error> {
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
-        let mut of = tokio::fs::File::create(&path).await?;
-        let buf = serde_json::to_string_pretty(&data)?;
-        of.write_all(buf.as_bytes()).await?;
+        let of = tokio::fs::File::create(&path).await?;
+        let mut of = BufWriter::new(of);
+
+        let mut buf = Vec::new();
+        for datum in data {
+            serde_json::to_writer(&mut buf, datum)?;
+            buf.push(b'\n');
+            of.write_all(buf.as_ref()).await?;
+            buf.clear();
+        }
         of.flush().await?;
 
         debug!(size=%buf.len(), ?path, "Wrote data to file");
