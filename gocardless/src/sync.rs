@@ -27,6 +27,15 @@ pub struct Cmd {
     provider: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "status")]
+enum TransactionWithStatus {
+    #[serde(rename = "pending")]
+    Pending(Transaction),
+    #[serde(rename = "booked")]
+    Booked(Transaction),
+}
+
 impl Cmd {
     #[instrument("sync", skip_all, fields(provider = %self.provider))]
     pub(crate) async fn run(&self) -> Result<()> {
@@ -89,7 +98,7 @@ impl Cmd {
 
         let transactions = fetch_transactions(client, account_id, start_date, end_date).await?;
 
-        let mut by_month = HashMap::<_, Transactions>::new();
+        let mut by_month = HashMap::<_, Vec<_>>::new();
 
         for booked in transactions.transactions.booked {
             let date = booked.date_best_effort();
@@ -98,9 +107,7 @@ impl Cmd {
             by_month
                 .entry(start_of_month)
                 .or_default()
-                .transactions
-                .booked
-                .push(booked)
+                .push(TransactionWithStatus::Booked(booked))
         }
 
         for pending in transactions.transactions.pending {
@@ -110,9 +117,7 @@ impl Cmd {
             by_month
                 .entry(start_of_month)
                 .or_default()
-                .transactions
-                .pending
-                .push(pending)
+                .push(TransactionWithStatus::Pending(pending))
         }
 
         for (month, transactions) in by_month {
