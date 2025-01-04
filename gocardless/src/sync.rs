@@ -93,7 +93,7 @@ impl Cmd {
 
         let balances = fetch_balances(client, account_id).await?;
 
-        self.write_file(&account_base.join("balances.json"), &balances.balances)
+        self.write_file(&account_base.join("balances.jsonl"), &balances.balances)
             .await?;
 
         let transactions = fetch_transactions(client, account_id, start_date, end_date).await?;
