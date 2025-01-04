@@ -3,7 +3,7 @@ use std::{collections::HashMap, path::Path};
 use chrono::{Datelike, Days, Local, Months, NaiveDate};
 use clap::Parser;
 use color_eyre::{eyre::eyre, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 use tracing::{debug, instrument};
 use uuid::Uuid;
@@ -14,7 +14,7 @@ use crate::{
     client::BankDataClient,
     config::{ConfigArg, ProviderConfig, ScraperConfig},
     connect::Requisition,
-    transactions::{Transactions, TransactionsQuery},
+    transactions::{Transaction, Transactions, TransactionsQuery},
 };
 
 #[derive(Debug, Parser)]
@@ -92,10 +92,7 @@ impl Cmd {
         let mut by_month = HashMap::<_, Transactions>::new();
 
         for booked in transactions.transactions.booked {
-            let date = booked
-                .booking_date
-                .or(booked.booking_date_time.map(|dt| dt.date_naive()))
-                .or(booked.value_date);
+            let date = booked.date_best_effort();
             let start_of_month = date.map(|d| d.with_day(1).expect("valid date"));
 
             by_month
@@ -105,11 +102,9 @@ impl Cmd {
                 .booked
                 .push(booked)
         }
+
         for pending in transactions.transactions.pending {
-            let date = pending
-                .booking_date
-                .or(pending.booking_date_time.map(|dt| dt.date_naive()))
-                .or(pending.value_date);
+            let date = pending.date_best_effort();
             let start_of_month = date.map(|d| d.with_day(1).expect("valid date"));
 
             by_month
