@@ -3,8 +3,8 @@ use std::{collections::HashMap, path::Path};
 use chrono::{Datelike, Days, Local, Months, NaiveDate};
 use clap::Parser;
 use color_eyre::{eyre::eyre, Result};
-use serde::Serialize;
-use tokio::io::AsyncWriteExt;
+use serde::{Deserialize, Serialize};
+use tokio::io::{AsyncWriteExt, BufWriter};
 use tracing::{debug, instrument};
 use uuid::Uuid;
 
@@ -14,7 +14,7 @@ use crate::{
     client::BankDataClient,
     config::{ConfigArg, ProviderConfig, ScraperConfig},
     connect::Requisition,
-    transactions::{Transactions, TransactionsQuery},
+    transactions::{Transaction, Transactions, TransactionsQuery},
 };
 
 #[derive(Debug, Parser)]
@@ -25,6 +25,15 @@ pub struct Cmd {
     config: ConfigArg,
     #[clap(short = 'p', long = "provider", help = "Provider name")]
     provider: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "status")]
+enum TransactionWithStatus {
+    #[serde(rename = "pending")]
+    Pending(Transaction),
+    #[serde(rename = "booked")]
+    Booked(Transaction),
 }
 
 impl Cmd {
@@ -79,50 +88,41 @@ impl Cmd {
 
         let account_base = provider_config.output.join(&details.iban);
 
-        self.write_file(&account_base.join("account-details.json"), &details)
+        self.write_file(&account_base.join("account-details.json"), &[details])
             .await?;
 
         let balances = fetch_balances(client, account_id).await?;
 
-        self.write_file(&account_base.join("balances.json"), &balances)
+        self.write_file(&account_base.join("balances.json"), &balances.balances)
             .await?;
 
         let transactions = fetch_transactions(client, account_id, start_date, end_date).await?;
 
-        let mut by_month = HashMap::<_, Transactions>::new();
+        let mut by_month = HashMap::<_, Vec<_>>::new();
 
         for booked in transactions.transactions.booked {
-            let date = booked
-                .booking_date
-                .or(booked.booking_date_time.map(|dt| dt.date_naive()))
-                .or(booked.value_date);
+            let date = booked.date_best_effort();
             let start_of_month = date.map(|d| d.with_day(1).expect("valid date"));
 
             by_month
                 .entry(start_of_month)
                 .or_default()
-                .transactions
-                .booked
-                .push(booked)
+                .push(TransactionWithStatus::Booked(booked))
         }
+
         for pending in transactions.transactions.pending {
-            let date = pending
-                .booking_date
-                .or(pending.booking_date_time.map(|dt| dt.date_naive()))
-                .or(pending.value_date);
+            let date = pending.date_best_effort();
             let start_of_month = date.map(|d| d.with_day(1).expect("valid date"));
 
             by_month
                 .entry(start_of_month)
                 .or_default()
-                .transactions
-                .pending
-                .push(pending)
+                .push(TransactionWithStatus::Pending(pending))
         }
 
         for (month, transactions) in by_month {
             let fname = month
-                .map(|month| month.format("%Y-%m.json").to_string())
+                .map(|month| month.format("%Y-%m.jsonl").to_string())
                 .unwrap_or_else(|| "undated.json".to_owned());
             let path = account_base.join(fname);
             self.write_file(&path, &transactions).await?;
@@ -135,14 +135,21 @@ impl Cmd {
     async fn write_file(
         &self,
         path: &Path,
-        data: impl Serialize,
+        data: &[impl Serialize],
     ) -> Result<(), color_eyre::eyre::Error> {
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
-        let mut of = tokio::fs::File::create(&path).await?;
-        let buf = serde_json::to_string_pretty(&data)?;
-        of.write_all(buf.as_bytes()).await?;
+        let of = tokio::fs::File::create(&path).await?;
+        let mut of = BufWriter::new(of);
+
+        let mut buf = Vec::new();
+        for datum in data {
+            serde_json::to_writer(&mut buf, datum)?;
+            buf.push(b'\n');
+            of.write_all(buf.as_ref()).await?;
+            buf.clear();
+        }
         of.flush().await?;
 
         debug!(size=%buf.len(), ?path, "Wrote data to file");

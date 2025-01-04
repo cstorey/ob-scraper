@@ -43,3 +43,11 @@ pub(crate) struct Transaction {
     #[serde(flatten)]
     pub(crate) other: serde_json::Value,
 }
+
+impl Transaction {
+    pub(crate) fn date_best_effort(&self) -> Option<NaiveDate> {
+        self.booking_date
+            .or(self.booking_date_time.map(|dt| dt.date_naive()))
+            .or(self.value_date)
+    }
+}
