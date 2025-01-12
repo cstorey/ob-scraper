@@ -1,5 +1,8 @@
+use std::sync::LazyLock;
+
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
+use tzfile::Tz;
 
 #[derive(Debug, Serialize)]
 pub(crate) struct TransactionsQuery {
@@ -23,6 +26,9 @@ pub(crate) struct TransactionsInner {
     #[serde(flatten)]
     pub(crate) other: serde_json::Value,
 }
+
+static EUROPE_LONDON: LazyLock<Tz> =
+    LazyLock::new(|| Tz::named("Europe/London").expect("Europe/London timezone"));
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct Transaction {
@@ -72,13 +78,25 @@ impl Transaction {
     pub(crate) fn timestamp_best_effort(&self) -> Option<DateTime<Utc>> {
         self.booking_date_time
             .or_else(|| {
-                self.booking_date
-                    .map(|dt| dt.and_hms_opt(0, 0, 0).unwrap().and_utc())
+                self.booking_date.map(|dt| {
+                    dt.and_hms_opt(0, 0, 0)
+                        .unwrap()
+                        .and_local_timezone(&*EUROPE_LONDON)
+                        .single()
+                        .expect("to Europe/London")
+                        .to_utc()
+                })
             })
             .or(self.value_date_time)
             .or_else(|| {
-                self.value_date
-                    .map(|dt| dt.and_hms_opt(0, 0, 0).unwrap().and_utc())
+                self.value_date.map(|dt| {
+                    dt.and_hms_opt(0, 0, 0)
+                        .unwrap()
+                        .and_local_timezone(&*EUROPE_LONDON)
+                        .single()
+                        .expect("to Europe/London")
+                        .to_utc()
+                })
             })
     }
 }
