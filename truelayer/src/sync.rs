@@ -229,7 +229,7 @@ async fn account_tx(
     write_jsons_atomically(
         &target_dir
             .join("accounts")
-            .join(&account_dir_name(&account))
+            .join(account_dir_name(&account))
             .join(month.start().format("%Y-%m.jsons").to_string()),
         txes.results,
     )
