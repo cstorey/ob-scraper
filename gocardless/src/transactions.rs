@@ -40,6 +40,24 @@ pub(crate) struct Transaction {
     pub(crate) booking_date_time: Option<DateTime<Utc>>,
     #[serde(rename = "valueDate", default, skip_serializing_if = "Option::is_none")]
     pub(crate) value_date: Option<NaiveDate>,
+    #[serde(
+        rename = "valueDateTime",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) value_date_time: Option<DateTime<Utc>>,
+    #[serde(
+        rename = "transactionId",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) transaction_id: Option<String>,
+    #[serde(
+        rename = "internalTransactionId",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) internal_transaction_id: Option<String>,
     #[serde(flatten)]
     pub(crate) other: serde_json::Value,
 }
@@ -49,5 +67,18 @@ impl Transaction {
         self.booking_date
             .or(self.booking_date_time.map(|dt| dt.date_naive()))
             .or(self.value_date)
+    }
+
+    pub(crate) fn timestamp_best_effort(&self) -> Option<DateTime<Utc>> {
+        self.booking_date_time
+            .or_else(|| {
+                self.booking_date
+                    .map(|dt| dt.and_hms_opt(0, 0, 0).unwrap().and_utc())
+            })
+            .or(self.value_date_time)
+            .or_else(|| {
+                self.value_date
+                    .map(|dt| dt.and_hms_opt(0, 0, 0).unwrap().and_utc())
+            })
     }
 }
