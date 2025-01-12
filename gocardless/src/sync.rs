@@ -1,6 +1,6 @@
-use std::{collections::HashMap, path::Path};
+use std::{cmp::Ordering, collections::HashMap, path::Path};
 
-use chrono::{Datelike, Days, Local, Months, NaiveDate};
+use chrono::{DateTime, Datelike, Days, Local, Months, NaiveDate, Utc};
 use clap::Parser;
 use color_eyre::{eyre::eyre, Result};
 use serde::{Deserialize, Serialize};
@@ -34,6 +34,31 @@ enum TransactionWithStatus {
     Pending(Transaction),
     #[serde(rename = "booked")]
     Booked(Transaction),
+}
+impl TransactionWithStatus {
+    fn timestamp_best_effort(&self) -> Option<DateTime<Utc>> {
+        match self {
+            TransactionWithStatus::Pending(transaction) => transaction.timestamp_best_effort(),
+            TransactionWithStatus::Booked(transaction) => transaction.timestamp_best_effort(),
+        }
+    }
+
+    fn transaction_id(&self) -> Option<&str> {
+        match self {
+            TransactionWithStatus::Pending(transaction) => transaction.transaction_id.as_deref(),
+            TransactionWithStatus::Booked(transaction) => transaction.transaction_id.as_deref(),
+        }
+    }
+    fn internal_transaction_id(&self) -> Option<&str> {
+        match self {
+            TransactionWithStatus::Pending(transaction) => {
+                transaction.internal_transaction_id.as_deref()
+            }
+            TransactionWithStatus::Booked(transaction) => {
+                transaction.internal_transaction_id.as_deref()
+            }
+        }
+    }
 }
 
 impl Cmd {
@@ -120,10 +145,27 @@ impl Cmd {
                 .push(TransactionWithStatus::Pending(pending))
         }
 
-        for (month, transactions) in by_month {
+        for (month, mut transactions) in by_month {
             let fname = month
                 .map(|month| month.format("%Y-%m.jsonl").to_string())
                 .unwrap_or_else(|| "undated.json".to_owned());
+
+            transactions.sort_by(|a, b| {
+                let cmp = if let (Some(left), Some(right)) =
+                    (a.timestamp_best_effort(), b.timestamp_best_effort())
+                {
+                    left.cmp(&right)
+                } else {
+                    Ordering::Equal
+                };
+
+                cmp.then_with(|| a.transaction_id().cmp(&b.transaction_id()))
+                    .then_with(|| {
+                        a.internal_transaction_id()
+                            .cmp(&b.internal_transaction_id())
+                    })
+            });
+
             let path = account_base.join(fname);
             self.write_file(&path, &transactions).await?;
         }
