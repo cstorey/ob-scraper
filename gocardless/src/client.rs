@@ -1,5 +1,6 @@
 use std::fmt;
 
+use again::RetryPolicy;
 use axum::http::{uri::Scheme, Uri};
 use chrono::{DateTime, Duration, Utc};
 use color_eyre::{
@@ -22,6 +23,7 @@ pub(crate) struct UnauthenticatedBankDataClient {
 pub(crate) struct BankDataClient {
     http: Client,
     token: Token,
+    retry_policy: RetryPolicy,
 }
 #[derive(Debug, Deserialize)]
 struct ErrorResponse {
@@ -85,7 +87,14 @@ impl UnauthenticatedBankDataClient {
 impl BankDataClient {
     pub(crate) fn new(token: Token) -> Self {
         let http = Client::new();
-        Self { http, token }
+        let retry_policy =
+            RetryPolicy::exponential(std::time::Duration::from_secs(1)).with_jitter(true);
+
+        Self {
+            http,
+            token,
+            retry_policy,
+        }
     }
 
     pub(crate) fn unauthenticated() -> UnauthenticatedBankDataClient {
@@ -106,12 +115,16 @@ impl BankDataClient {
 
         debug!(%url, "GET");
         let resp = self
-            .http
-            .get(url)
-            .bearer_auth(&self.token.access)
-            .send()
-            .await?
-            .parse_error()
+            .retry_policy
+            .retry(|| async {
+                self.http
+                    .get(&url)
+                    .bearer_auth(&self.token.access)
+                    .send()
+                    .await?
+                    .parse_error()
+                    .await
+            })
             .await?;
 
         log_rate_limits(&resp, started_at)?;
@@ -139,14 +152,18 @@ impl BankDataClient {
 
         debug!(%url, "POST");
         let resp = self
-            .http
-            .post(url)
-            .json(body)
-            .bearer_auth(&self.token.access)
-            .send()
-            .await?
-            .log_rate_limits(started_at)?
-            .parse_error()
+            .retry_policy
+            .retry(|| async {
+                self.http
+                    .post(&url)
+                    .json(body)
+                    .bearer_auth(&self.token.access)
+                    .send()
+                    .await?
+                    .log_rate_limits(started_at)?
+                    .parse_error()
+                    .await
+            })
             .await?;
 
         let data = resp.json().await?;
