@@ -2,8 +2,8 @@ use std::{fs::Permissions, io::Write, os::unix::fs::PermissionsExt, path::Path};
 
 use color_eyre::Result;
 use serde::Serialize;
-use tokio::task::spawn_blocking;
-use tracing::{instrument, Span};
+use tokio::{io::AsyncWriteExt, task::spawn_blocking};
+use tracing::{debug, instrument, Span};
 
 #[instrument(skip_all, fields(?path))]
 pub(crate) async fn write_atomically<T: Serialize + Send + 'static>(
@@ -26,6 +26,28 @@ pub(crate) async fn write_atomically<T: Serialize + Send + 'static>(
         Ok(())
     })
     .await??;
+
+    Ok(())
+}
+
+#[instrument(skip_all, fields(?path))]
+pub(crate) async fn write_json_lines(path: &Path, data: &[impl Serialize]) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    let of = tokio::fs::File::create(&path).await?;
+    let mut of = tokio::io::BufWriter::new(of);
+
+    let mut buf = Vec::new();
+    for datum in data {
+        serde_json::to_writer(&mut buf, datum)?;
+        buf.push(b'\n');
+        of.write_all(buf.as_ref()).await?;
+        buf.clear();
+    }
+    of.flush().await?;
+
+    debug!(size=%buf.len(), ?path, "Wrote data to file");
 
     Ok(())
 }

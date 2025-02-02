@@ -4,7 +4,6 @@ use chrono::{DateTime, Datelike, Days, Local, Months, NaiveDate, Utc};
 use clap::Parser;
 use color_eyre::{eyre::eyre, Result};
 use serde::{Deserialize, Serialize};
-use tokio::io::{AsyncWriteExt, BufWriter};
 use tracing::{debug, instrument};
 use uuid::Uuid;
 
@@ -14,6 +13,7 @@ use crate::{
     client::BankDataClient,
     config::{ConfigArg, ProviderConfig, ScraperConfig},
     connect::Requisition,
+    files::write_json_lines,
     transactions::{Transaction, Transactions, TransactionsQuery},
 };
 
@@ -179,24 +179,7 @@ impl Cmd {
         path: &Path,
         data: &[impl Serialize],
     ) -> Result<(), color_eyre::eyre::Error> {
-        if let Some(parent) = path.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-        let of = tokio::fs::File::create(&path).await?;
-        let mut of = BufWriter::new(of);
-
-        let mut buf = Vec::new();
-        for datum in data {
-            serde_json::to_writer(&mut buf, datum)?;
-            buf.push(b'\n');
-            of.write_all(buf.as_ref()).await?;
-            buf.clear();
-        }
-        of.flush().await?;
-
-        debug!(size=%buf.len(), ?path, "Wrote data to file");
-
-        Ok(())
+        write_json_lines(path, data).await
     }
 }
 
