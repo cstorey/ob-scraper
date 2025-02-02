@@ -1,4 +1,9 @@
-use std::{fs::Permissions, io::Write, os::unix::fs::PermissionsExt, path::Path};
+use std::{
+    fs::Permissions,
+    io::{BufWriter, Write},
+    os::unix::fs::PermissionsExt,
+    path::Path,
+};
 
 use color_eyre::{eyre::Context, Result};
 use serde::Serialize;
@@ -31,12 +36,15 @@ async fn write_file_atomically<
         std::fs::create_dir_all(parent)
             .with_context(|| format!("Creating parent: {:?}", parent))?;
 
-        let mut f = tempfile::Builder::new()
+        let f = tempfile::Builder::new()
             .permissions(Permissions::from_mode(0o666))
             .tempfile_in(parent)?;
+        let mut f = BufWriter::new(f);
         writer(&mut f)?;
         f.flush()?;
-        f.persist(&path)?;
+
+        let tmpf = f.into_inner()?;
+        tmpf.persist(&path)?;
 
         debug!("Wrote data to file");
 
