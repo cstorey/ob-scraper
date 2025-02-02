@@ -10,6 +10,19 @@ pub(crate) async fn write_json_atomically<T: Serialize + Send + 'static>(
     path: &Path,
     state: T,
 ) -> Result<()> {
+    write_file_atomically(path, move |f| {
+        serde_json::to_writer_pretty(f, &state)?;
+        Ok(())
+    })
+    .await
+}
+
+async fn write_file_atomically<
+    F: FnOnce(&mut dyn std::io::Write) -> Result<()> + Send + 'static,
+>(
+    path: &Path,
+    writer: F,
+) -> std::result::Result<(), color_eyre::eyre::Error> {
     let span = Span::current();
     let path = path.to_owned();
     spawn_blocking(move || -> Result<()> {
@@ -19,7 +32,7 @@ pub(crate) async fn write_json_atomically<T: Serialize + Send + 'static>(
         let mut f = tempfile::Builder::new()
             .permissions(Permissions::from_mode(0o666))
             .tempfile_in(parent)?;
-        serde_json::to_writer_pretty(&mut f, &state)?;
+        writer(&mut f)?;
         f.flush()?;
         f.persist(&path)?;
 
