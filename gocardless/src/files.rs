@@ -6,7 +6,7 @@ use tokio::{io::AsyncWriteExt, task::spawn_blocking};
 use tracing::{debug, instrument, Span};
 
 #[instrument(skip_all, fields(?path))]
-pub(crate) async fn write_atomically<T: Serialize + Send + 'static>(
+pub(crate) async fn write_json_atomically<T: Serialize + Send + 'static>(
     path: &Path,
     state: T,
 ) -> Result<()> {

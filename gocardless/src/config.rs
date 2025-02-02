@@ -8,7 +8,7 @@ use tokio::task::spawn_blocking;
 use tracing::{instrument, Span};
 use uuid::Uuid;
 
-use crate::{connect::Requisition, files::write_atomically};
+use crate::{connect::Requisition, files::write_json_atomically};
 
 #[derive(Debug, Clone, Args)]
 pub(crate) struct ConfigArg {
@@ -49,7 +49,7 @@ impl ProviderConfig {
     }
 
     pub(crate) async fn write_state(&self, state: &ProviderState) -> Result<()> {
-        write_atomically(&self.state, state.clone()).await
+        write_json_atomically(&self.state, state.clone()).await
     }
 
     #[instrument(skip_all, fields(path=?self.state))]
