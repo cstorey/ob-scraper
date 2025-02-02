@@ -97,6 +97,12 @@ async fn load_token(path: &Path) -> Result<Option<Token>> {
 
     let now = Utc::now();
 
+    if token.refresh_expires - EXPIRY_GRACE_PERIOD <= now {
+        debug!(expired_at=?token.access_expires, "Refresh token expired");
+
+        return Ok(None);
+    }
+
     if token.access_expires - EXPIRY_GRACE_PERIOD <= now {
         debug!(expired_at=?token.access_expires, "Access token expired, refreshing");
         token = refresh_token(&token).await?;
