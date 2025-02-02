@@ -9,7 +9,7 @@ use color_eyre::Result;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, instrument, warn};
 
-use crate::client::BankDataClient;
+use crate::{client::BankDataClient, files::write_atomically};
 
 const EXPIRY_GRACE_PERIOD: Duration = Duration::minutes(1);
 
@@ -76,8 +76,7 @@ impl Token {
 
 #[instrument(skip_all, fields(?path))]
 async fn store_token(path: &Path, tok: &Token) -> Result<()> {
-    let buf = serde_json::to_vec(&tok)?;
-    tokio::fs::write(&path, buf).await?;
+    write_atomically(path, tok.clone()).await?;
     debug!(?path, "Stored token");
     Ok(())
 }
