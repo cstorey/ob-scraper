@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, collections::HashMap, path::Path};
+use std::{cmp::Ordering, collections::HashMap};
 
 use chrono::{DateTime, Datelike, Days, Local, Months, NaiveDate, Utc};
 use clap::Parser;
@@ -113,13 +113,11 @@ impl Cmd {
 
         let account_base = provider_config.output.join(&details.iban);
 
-        self.write_file(&account_base.join("account-details.json"), &[details])
-            .await?;
+        write_json_lines(&account_base.join("account-details.json"), [details]).await?;
 
         let balances = fetch_balances(client, account_id).await?;
 
-        self.write_file(&account_base.join("balances.jsonl"), &balances.balances)
-            .await?;
+        write_json_lines(&account_base.join("balances.jsonl"), balances.balances).await?;
 
         let transactions = fetch_transactions(client, account_id, start_date, end_date).await?;
 
@@ -167,19 +165,10 @@ impl Cmd {
             });
 
             let path = account_base.join(fname);
-            self.write_file(&path, &transactions).await?;
+            write_json_lines(&path, transactions).await?;
         }
 
         Ok(())
-    }
-
-    #[instrument(skip_all, fields(?path))]
-    async fn write_file(
-        &self,
-        path: &Path,
-        data: &[impl Serialize],
-    ) -> Result<(), color_eyre::eyre::Error> {
-        write_json_lines(path, data).await
     }
 }
 

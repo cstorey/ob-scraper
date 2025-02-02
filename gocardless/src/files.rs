@@ -1,8 +1,8 @@
 use std::{fs::Permissions, io::Write, os::unix::fs::PermissionsExt, path::Path};
 
-use color_eyre::Result;
+use color_eyre::{eyre::Context, Result};
 use serde::Serialize;
-use tokio::{io::AsyncWriteExt, task::spawn_blocking};
+use tokio::task::spawn_blocking;
 use tracing::{debug, instrument, Span};
 
 #[instrument(skip_all, fields(?path))]
@@ -28,6 +28,8 @@ async fn write_file_atomically<
     spawn_blocking(move || -> Result<()> {
         let _entered = span.enter();
         let parent = path.parent().unwrap_or(".".as_ref());
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("Creating parent: {:?}", parent))?;
 
         let mut f = tempfile::Builder::new()
             .permissions(Permissions::from_mode(0o666))
@@ -35,6 +37,8 @@ async fn write_file_atomically<
         writer(&mut f)?;
         f.flush()?;
         f.persist(&path)?;
+
+        debug!("Wrote data to file");
 
         Ok(())
     })
@@ -44,23 +48,22 @@ async fn write_file_atomically<
 }
 
 #[instrument(skip_all, fields(?path))]
-pub(crate) async fn write_json_lines(path: &Path, data: &[impl Serialize]) -> Result<()> {
+pub(crate) async fn write_json_lines(
+    path: &Path,
+    data: impl IntoIterator<Item = impl Serialize> + Send + 'static,
+) -> Result<()> {
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
-    let of = tokio::fs::File::create(&path).await?;
-    let mut of = tokio::io::BufWriter::new(of);
 
-    let mut buf = Vec::new();
-    for datum in data {
-        serde_json::to_writer(&mut buf, datum)?;
-        buf.push(b'\n');
-        of.write_all(buf.as_ref()).await?;
-        buf.clear();
-    }
-    of.flush().await?;
-
-    debug!(size=%buf.len(), ?path, "Wrote data to file");
+    write_file_atomically(path, move |mut f| {
+        for datum in data {
+            serde_json::to_writer(&mut f, &datum)?;
+            f.write_all(b"\n")?;
+        }
+        Ok(())
+    })
+    .await?;
 
     Ok(())
 }
