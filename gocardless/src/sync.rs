@@ -1,10 +1,9 @@
-use std::{cmp::Ordering, collections::HashMap, path::Path};
+use std::{cmp::Ordering, collections::HashMap};
 
 use chrono::{DateTime, Datelike, Days, Local, Months, NaiveDate, Utc};
 use clap::Parser;
 use color_eyre::{eyre::eyre, Result};
 use serde::{Deserialize, Serialize};
-use tokio::io::{AsyncWriteExt, BufWriter};
 use tracing::{debug, instrument};
 use uuid::Uuid;
 
@@ -14,6 +13,7 @@ use crate::{
     client::BankDataClient,
     config::{ConfigArg, ProviderConfig, ScraperConfig},
     connect::Requisition,
+    files::write_json_lines,
     transactions::{Transaction, Transactions, TransactionsQuery},
 };
 
@@ -113,13 +113,11 @@ impl Cmd {
 
         let account_base = provider_config.output.join(&details.iban);
 
-        self.write_file(&account_base.join("account-details.json"), &[details])
-            .await?;
+        write_json_lines(&account_base.join("account-details.json"), [details]).await?;
 
         let balances = fetch_balances(client, account_id).await?;
 
-        self.write_file(&account_base.join("balances.jsonl"), &balances.balances)
-            .await?;
+        write_json_lines(&account_base.join("balances.jsonl"), balances.balances).await?;
 
         let transactions = fetch_transactions(client, account_id, start_date, end_date).await?;
 
@@ -167,34 +165,8 @@ impl Cmd {
             });
 
             let path = account_base.join(fname);
-            self.write_file(&path, &transactions).await?;
+            write_json_lines(&path, transactions).await?;
         }
-
-        Ok(())
-    }
-
-    #[instrument(skip_all, fields(?path))]
-    async fn write_file(
-        &self,
-        path: &Path,
-        data: &[impl Serialize],
-    ) -> Result<(), color_eyre::eyre::Error> {
-        if let Some(parent) = path.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-        let of = tokio::fs::File::create(&path).await?;
-        let mut of = BufWriter::new(of);
-
-        let mut buf = Vec::new();
-        for datum in data {
-            serde_json::to_writer(&mut buf, datum)?;
-            buf.push(b'\n');
-            of.write_all(buf.as_ref()).await?;
-            buf.clear();
-        }
-        of.flush().await?;
-
-        debug!(size=%buf.len(), ?path, "Wrote data to file");
 
         Ok(())
     }

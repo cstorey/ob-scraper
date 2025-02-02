@@ -3,6 +3,7 @@ mod auth;
 mod client;
 mod config;
 mod connect;
+mod files;
 mod institutions;
 mod sync;
 mod transactions;

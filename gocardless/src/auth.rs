@@ -9,7 +9,7 @@ use color_eyre::Result;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, instrument, warn};
 
-use crate::client::BankDataClient;
+use crate::{client::BankDataClient, files::write_json_atomically};
 
 const EXPIRY_GRACE_PERIOD: Duration = Duration::minutes(1);
 
@@ -76,8 +76,7 @@ impl Token {
 
 #[instrument(skip_all, fields(?path))]
 async fn store_token(path: &Path, tok: &Token) -> Result<()> {
-    let buf = serde_json::to_vec(&tok)?;
-    tokio::fs::write(&path, buf).await?;
+    write_json_atomically(path, tok.clone()).await?;
     debug!(?path, "Stored token");
     Ok(())
 }
@@ -96,6 +95,12 @@ async fn load_token(path: &Path) -> Result<Option<Token>> {
     let mut token = serde_json::from_slice::<Token>(&buf)?;
 
     let now = Utc::now();
+
+    if token.refresh_expires - EXPIRY_GRACE_PERIOD <= now {
+        debug!(expired_at=?token.access_expires, "Refresh token expired");
+
+        return Ok(None);
+    }
 
     if token.access_expires - EXPIRY_GRACE_PERIOD <= now {
         debug!(expired_at=?token.access_expires, "Access token expired, refreshing");
