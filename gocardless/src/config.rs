@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs, io::Write, path::PathBuf};
+use std::{collections::HashMap, fs, path::PathBuf};
 
 use chrono::Days;
 use clap::Args;
@@ -8,7 +8,7 @@ use tokio::task::spawn_blocking;
 use tracing::{instrument, Span};
 use uuid::Uuid;
 
-use crate::connect::Requisition;
+use crate::{connect::Requisition, files::write_atomically};
 
 #[derive(Debug, Clone, Args)]
 pub(crate) struct ConfigArg {
@@ -48,24 +48,8 @@ impl ProviderConfig {
         Days::new(self.history_days.unwrap_or(90))
     }
 
-    #[instrument(skip_all, fields(path=?self.state))]
     pub(crate) async fn write_state(&self, state: &ProviderState) -> Result<()> {
-        let span = Span::current();
-        let path = self.state.to_owned();
-        let state = state.clone();
-        spawn_blocking(move || -> Result<()> {
-            let _entered = span.enter();
-            let parent = path.parent().unwrap_or(".".as_ref());
-            let mut f = tempfile::NamedTempFile::new_in(parent)?;
-            serde_json::to_writer_pretty(&mut f, &state)?;
-            f.flush()?;
-            f.persist(&path)?;
-
-            Ok(())
-        })
-        .await??;
-
-        Ok(())
+        write_atomically(&self.state, state.clone()).await
     }
 
     #[instrument(skip_all, fields(path=?self.state))]
