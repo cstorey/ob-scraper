@@ -87,8 +87,10 @@ impl UnauthenticatedBankDataClient {
 impl BankDataClient {
     pub(crate) fn new(token: Token) -> Self {
         let http = Client::new();
-        let retry_policy =
-            RetryPolicy::exponential(std::time::Duration::from_secs(1)).with_jitter(true);
+        let retry_policy = RetryPolicy::exponential(std::time::Duration::from_secs(1))
+            .with_jitter(true)
+            .with_max_retries(60)
+            .with_max_delay(std::time::Duration::from_secs(60));
 
         Self {
             http,
