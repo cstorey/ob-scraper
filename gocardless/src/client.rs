@@ -11,7 +11,7 @@ use reqwest::{header::CONTENT_TYPE, Client};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::{debug, trace, warn};
 
-use crate::auth::Token;
+use crate::{auth::Token, config::RetryConfig};
 
 const BANK_DATA_HOST: &str = "bankaccountdata.gocardless.com";
 
@@ -85,12 +85,10 @@ impl UnauthenticatedBankDataClient {
 }
 
 impl BankDataClient {
-    pub(crate) fn new(token: Token) -> Self {
+    pub(crate) fn new(token: Token, retries: &RetryConfig) -> Self {
         let http = Client::new();
-        let retry_policy = RetryPolicy::exponential(std::time::Duration::from_secs(1))
-            .with_jitter(true)
-            .with_max_retries(60)
-            .with_max_delay(std::time::Duration::from_secs(60));
+
+        let retry_policy = retries.as_retry_policy();
 
         Self {
             http,

@@ -1,5 +1,6 @@
-use std::{collections::HashMap, fs, path::PathBuf};
+use std::{collections::HashMap, fs, path::PathBuf, time::Duration};
 
+use again::RetryPolicy;
 use chrono::Days;
 use clap::Args;
 use color_eyre::{eyre::Context, Result};
@@ -24,9 +25,35 @@ pub(crate) struct ProviderConfig {
     pub(crate) state: PathBuf,
 }
 
+#[derive(Debug, Clone, Deserialize, Default)]
+pub(crate) struct RetryConfig {
+    delay_s: Option<u64>,
+    max_delay_s: Option<u64>,
+    max_retries: Option<usize>,
+}
+impl RetryConfig {
+    pub(crate) fn as_retry_policy(&self) -> again::RetryPolicy {
+        let mut retry_policy = RetryPolicy::exponential(
+            self.delay_s
+                .map(Duration::from_secs)
+                .unwrap_or(Duration::from_secs(1)),
+        );
+        if let Some(max_retries) = self.max_retries {
+            retry_policy = retry_policy.with_max_retries(max_retries)
+        }
+        if let Some(max_delay_s) = self.max_delay_s {
+            retry_policy = retry_policy.with_max_delay(Duration::from_secs(max_delay_s))
+        }
+
+        retry_policy
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct ScraperConfig {
     pub(crate) provider: HashMap<String, ProviderConfig>,
+    #[serde(default)]
+    pub(crate) retries: RetryConfig,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ProviderState {

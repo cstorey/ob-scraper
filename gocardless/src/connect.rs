@@ -92,7 +92,7 @@ impl Cmd {
 
         Span::current().record("institution_id", &provider_config.institution_id);
 
-        let client = BankDataClient::new(token);
+        let client = BankDataClient::new(token, &config.retries);
 
         let cnx = CancellationToken::new();
         let ip_addr = IpAddr::from([127, 0, 0, 1]);

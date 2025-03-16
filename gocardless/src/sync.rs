@@ -35,6 +35,7 @@ enum TransactionWithStatus {
     #[serde(rename = "booked")]
     Booked(Transaction),
 }
+
 impl TransactionWithStatus {
     fn timestamp_best_effort(&self) -> Option<DateTime<Utc>> {
         match self {
@@ -71,7 +72,7 @@ impl Cmd {
             return Err(eyre!("Unrecognised provider: {}", self.provider));
         };
 
-        let client = BankDataClient::new(token);
+        let client = BankDataClient::new(token, &config.retries);
 
         let state = provider_config.load_state().await?;
 
