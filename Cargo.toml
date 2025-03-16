@@ -3,7 +3,7 @@ resolver = "2"
 members = ["gocardless", "truelayer"]
 
 [workspace.dependencies]
-tokio = { version = "1.43.0", features = ["full"] }
+tokio = { version = "1.44.1", features = ["full"] }
 reqwest = { version = "0.12.4", features = ["json"] }
 anyhow = { version = "1.0.96", features = ["backtrace"] }
 tracing = "0.1.41"
