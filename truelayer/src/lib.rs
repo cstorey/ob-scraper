@@ -1,5 +1,6 @@
 use again::RetryPolicy;
-use anyhow::Result;
+use anyhow::{bail, Result};
+use hyper::StatusCode;
 use reqwest::RequestBuilder;
 use secrecy::{ExposeSecret, Secret, Zeroize};
 use serde::{de::DeserializeOwned, Serialize, Serializer};
@@ -39,6 +40,11 @@ async fn perform_request<R: DeserializeOwned, B: Fn() -> RequestBuilder>(
 ) -> Result<R> {
     async fn inner<R: DeserializeOwned, B: Fn() -> RequestBuilder>(build: B) -> Result<R> {
         let res = build().send().await?;
+        if res.status() == StatusCode::OK {
+            let result: R = res.json().await?;
+            return Ok(result);
+        }
+
         if let Err(error) = res.error_for_status_ref() {
             error!(%error, status=?res.status(), "Failed response");
             if let Ok(body) = res.text().await {
@@ -46,8 +52,7 @@ async fn perform_request<R: DeserializeOwned, B: Fn() -> RequestBuilder>(
             }
             Err(error.into())
         } else {
-            let result = res.json().await?;
-            Ok(result)
+            bail!("Unprocessable response: {}", res.status());
         }
     }
 
