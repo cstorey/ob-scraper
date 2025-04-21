@@ -1,13 +1,14 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::Decimal;
-use serde::{Deserialize, Serialize};
+use serde::{de::IgnoredAny, Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct Account {
     pub(crate) id: Uuid,
     pub(crate) created: DateTime<Utc>,
-    pub(crate) last_accessed: Option<DateTime<Utc>>,
+    #[serde(skip_serializing, rename = "last_accessed")]
+    pub(crate) _last_accessed: IgnoredAny,
     pub(crate) iban: String,
     pub(crate) status: String,
     pub(crate) institution_id: String,
