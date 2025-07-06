@@ -2,13 +2,16 @@ use std::{cmp::Ordering, collections::HashMap};
 
 use chrono::{DateTime, Datelike, Days, Local, Months, NaiveDate, Utc};
 use clap::Parser;
-use color_eyre::{eyre::eyre, Result};
+use color_eyre::{
+    eyre::{bail, eyre},
+    Result,
+};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, instrument};
 use uuid::Uuid;
 
 use crate::{
-    accounts::{Account, Balances},
+    accounts::{Account, AccountStatus, Balances},
     auth::AuthArgs,
     client::BankDataClient,
     config::{ConfigArg, ProviderConfig, ScraperConfig},
@@ -114,7 +117,13 @@ impl Cmd {
 
         let account_base = provider_config.output.join(&details.iban);
 
+        let status = details.status.clone();
+
         write_json_lines(&account_base.join("account-details.json"), [details]).await?;
+
+        if status != AccountStatus::Ready {
+            bail!("Account status is not ready: {status:?}")
+        }
 
         let balances = fetch_balances(client, account_id).await?;
 
