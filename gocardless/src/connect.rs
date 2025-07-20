@@ -167,6 +167,12 @@ struct WebError(Report);
 
 type WebResult<T> = std::result::Result<T, WebError>;
 
+impl From<Report> for WebError {
+    fn from(value: Report) -> Self {
+        WebError(value)
+    }
+}
+
 fn routes(cnx: CancellationToken, expected_requisition_id: Uuid) -> Router {
     Router::new()
         .route("/", get(handle_redirect))
