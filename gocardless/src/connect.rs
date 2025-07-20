@@ -3,7 +3,7 @@ use std::net::IpAddr;
 use axum::{
     debug_handler,
     extract::{Query, State},
-    http::{uri::Scheme, StatusCode, Uri},
+    http::{uri::Scheme, HeaderMap, StatusCode, Uri},
     response::{IntoResponse, Response},
     routing::get,
     Router,
@@ -13,6 +13,7 @@ use color_eyre::{
     eyre::{eyre, Context},
     Report, Result,
 };
+use http::{header::LOCATION, HeaderValue};
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
@@ -121,9 +122,20 @@ impl Cmd {
 
         debug!(?requisition, "Got requisition");
 
-        let app = Router::new().merge(routes(cnx.clone(), requisition.id));
+        let app = Router::new().merge(routes(cnx.clone(), client.clone(), requisition.id));
 
-        println!("Go to link: {}", requisition.link);
+        let auth_url = Uri::builder()
+            .scheme(Scheme::HTTP)
+            .authority(listen_address.to_string())
+            .path_and_query(format!(
+                "?{}",
+                serde_urlencoded::to_string(RequisitionCallbackQuery { id: requisition.id })
+                    .context("encode query")?,
+            ))
+            .build()
+            .context("Build base URI")?;
+
+        println!("Go to link: {}", auth_url);
         info!("Awaiting response");
 
         axum::serve(listener, app)
@@ -155,9 +167,10 @@ impl Requisition {
 struct AxumState {
     cnx: CancellationToken,
     expected_requisition_id: Uuid,
+    client: BankDataClient,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct RequisitionCallbackQuery {
     #[serde(rename = "ref")]
     id: Uuid,
@@ -173,11 +186,12 @@ impl From<Report> for WebError {
     }
 }
 
-fn routes(cnx: CancellationToken, expected_requisition_id: Uuid) -> Router {
+fn routes(cnx: CancellationToken, client: BankDataClient, expected_requisition_id: Uuid) -> Router {
     Router::new()
         .route("/", get(handle_redirect))
         .with_state(AxumState {
             cnx,
+            client,
             expected_requisition_id,
         })
 }
@@ -195,9 +209,30 @@ async fn handle_redirect(
         return Ok((StatusCode::NOT_FOUND, "Unexpected requisition").into_response());
     }
 
-    state.cnx.cancel();
+    let requisition = state
+        .client
+        .get::<Requisition>(&format!("/api/v2/requisitions/{}/", q.id))
+        .await?;
 
-    info!("Received confirmation");
+    debug!(?requisition, "Got requisition",);
+
+    match requisition.status {
+        RequisitionStatus::Created => {
+            debug!(link=?requisition.link, "Created; redirecting");
+            let mut headers = HeaderMap::new();
+            headers.insert(
+                LOCATION,
+                HeaderValue::from_str(&requisition.link).context("location header value")?,
+            );
+            let resp = (StatusCode::SEE_OTHER, headers).into_response();
+            return Ok(resp);
+        }
+        RequisitionStatus::Linked => {
+            info!("Received confirmation");
+            state.cnx.cancel();
+        }
+        status => warn!(?status, "Other requisition status"),
+    }
 
     Ok((StatusCode::OK, "Ok").into_response())
 }
