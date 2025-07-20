@@ -1,5 +1,3 @@
-use std::net::IpAddr;
-
 use axum::{
     debug_handler,
     extract::{Query, State},
@@ -34,8 +32,6 @@ pub struct Cmd {
     config: ConfigArg,
     #[clap(short = 'p', long = "provider", help = "Provider name")]
     provider: String,
-    #[clap(short = 'l', long = "port", help = "HTTP Listener port")]
-    port: u16,
 }
 
 #[derive(Debug, Serialize)]
@@ -96,10 +92,9 @@ impl Cmd {
         let client = BankDataClient::new(token, &config.retries);
 
         let cnx = CancellationToken::new();
-        let ip_addr = IpAddr::from([127, 0, 0, 1]);
-        let listener = TcpListener::bind((ip_addr, self.port))
+        let listener = TcpListener::bind(config.http.bind_address)
             .await
-            .with_context(|| format!("Bind to address: {}:{}", ip_addr, self.port))?;
+            .with_context(|| format!("Bind to address: {}", config.http.bind_address))?;
 
         let listen_address = listener.local_addr().context("listen address")?;
         let base_url = Uri::builder()

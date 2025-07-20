@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs, path::PathBuf, time::Duration};
+use std::{collections::HashMap, fs, net::SocketAddr, path::PathBuf, time::Duration};
 
 use again::RetryPolicy;
 use chrono::Days;
@@ -54,7 +54,13 @@ pub(crate) struct ScraperConfig {
     pub(crate) provider: HashMap<String, ProviderConfig>,
     #[serde(default)]
     pub(crate) retries: RetryConfig,
+    pub(crate) http: HttpListenerConfig,
 }
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct HttpListenerConfig {
+    pub(crate) bind_address: SocketAddr,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ProviderState {
     pub(crate) requisition_id: Uuid,
