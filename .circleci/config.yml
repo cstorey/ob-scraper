@@ -39,7 +39,7 @@ jobs:
       - *RESTORE_DOT_CARGO
       - run: cargo fmt -- --check
       - *RESTORE_DEPS
-      - run: cargo install cargo-sort@1.0.9
+      - run: cargo install cargo-sort@2.0.1
       - run: cargo sort --check --workspace
       - run: cargo build --locked --all --tests
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
