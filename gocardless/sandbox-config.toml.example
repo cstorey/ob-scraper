@@ -1,4 +1,13 @@
+[http]
+bind_address = "127.0.0.1:5600"
+client_facing_url = "http://localhost:5600/"
+
 [provider.mock]
 institution_id = "SANDBOXFINANCE_SFIN0000"
 output = "tmp/mock"
 state = "tmp/mock-state.json"
+
+[retries]
+delay_s = 10
+max_delay_s = 60
+max_retries = 20
