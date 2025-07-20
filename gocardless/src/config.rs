@@ -4,7 +4,9 @@ use again::RetryPolicy;
 use chrono::Days;
 use clap::Args;
 use color_eyre::{eyre::Context, Result};
+use http::Uri;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 use tokio::task::spawn_blocking;
 use tracing::{instrument, Span};
 use uuid::Uuid;
@@ -56,9 +58,19 @@ pub(crate) struct ScraperConfig {
     pub(crate) retries: RetryConfig,
     pub(crate) http: HttpListenerConfig,
 }
+
+#[serde_as]
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct HttpListenerConfig {
     pub(crate) bind_address: SocketAddr,
+    #[serde_as(as = "serde_with::DisplayFromStr")]
+    pub(crate) client_facing_url: Uri,
+}
+
+impl HttpListenerConfig {
+    pub(crate) fn client_facing_url_builder(&self) -> http::uri::Builder {
+        http::uri::Builder::from(self.client_facing_url.clone())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

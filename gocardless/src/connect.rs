@@ -1,7 +1,7 @@
 use axum::{
     debug_handler,
     extract::{Query, State},
-    http::{uri::Scheme, HeaderMap, StatusCode, Uri},
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::get,
     Router,
@@ -96,10 +96,9 @@ impl Cmd {
             .await
             .with_context(|| format!("Bind to address: {}", config.http.bind_address))?;
 
-        let listen_address = listener.local_addr().context("listen address")?;
-        let base_url = Uri::builder()
-            .scheme(Scheme::HTTP)
-            .authority(listen_address.to_string())
+        let base_url = config
+            .http
+            .client_facing_url_builder()
             .path_and_query("")
             .build()
             .context("Build base URI")?;
@@ -108,6 +107,8 @@ impl Cmd {
             institution_id: provider_config.institution_id.clone(),
             redirect: base_url.to_string(),
         };
+
+        debug!(?req);
 
         let requisition = client
             .post::<Requisition>("/api/v2/requisitions/", &req)
@@ -119,16 +120,16 @@ impl Cmd {
 
         let app = Router::new().merge(routes(cnx.clone(), client.clone(), requisition.id));
 
-        let auth_url = Uri::builder()
-            .scheme(Scheme::HTTP)
-            .authority(listen_address.to_string())
+        let auth_url = config
+            .http
+            .client_facing_url_builder()
             .path_and_query(format!(
                 "?{}",
                 serde_urlencoded::to_string(RequisitionCallbackQuery { id: requisition.id })
                     .context("encode query")?,
             ))
             .build()
-            .context("Build base URI")?;
+            .context("Build auth URI")?;
 
         println!("Go to link: {}", auth_url);
         info!("Awaiting response");
