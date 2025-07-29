@@ -278,3 +278,22 @@ impl fmt::Display for RequisitionStatus {
         }
     }
 }
+
+mod filters {
+    use askama::{filters::Safe, Values};
+    use qrcode::{render::svg, QrCode};
+
+    pub(super) fn qrcode_svg(value: impl ToString, _: &dyn Values) -> askama::Result<Safe<String>> {
+        let value = value.to_string();
+
+        let code = QrCode::new(&value).map_err(|e| askama::Error::Custom(Box::new(e)))?;
+        let image = code
+            .render()
+            .min_dimensions(200, 200)
+            .dark_color(svg::Color("#000"))
+            .light_color(svg::Color("#fff"))
+            .build();
+
+        Ok(Safe(image))
+    }
+}
