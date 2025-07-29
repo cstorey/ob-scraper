@@ -213,7 +213,11 @@ async fn handle_redirect(
     debug!(?requisition, "Got requisition",);
 
     match requisition.status {
-        RequisitionStatus::Created => {
+        RequisitionStatus::Created
+        | RequisitionStatus::GivingConsent
+        | RequisitionStatus::UndergoingAuthentication
+        | RequisitionStatus::SelectingAccounts
+        | RequisitionStatus::GrantingAccess => {
             debug!(link=?requisition.link, "Created; redirecting");
             let mut headers = HeaderMap::new();
             headers.insert(
