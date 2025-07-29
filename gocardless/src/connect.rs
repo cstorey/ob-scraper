@@ -1,8 +1,11 @@
+use std::fmt;
+
+use askama::Template;
 use axum::{
     debug_handler,
     extract::{Query, State},
-    http::{HeaderMap, StatusCode},
-    response::{IntoResponse, Response},
+    http::StatusCode,
+    response::{Html, IntoResponse, Response},
     routing::get,
     Router,
 };
@@ -11,7 +14,6 @@ use color_eyre::{
     eyre::{eyre, Context},
     Report, Result,
 };
-use http::{header::LOCATION, HeaderValue};
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
@@ -176,6 +178,9 @@ struct WebError(Report);
 
 type WebResult<T> = std::result::Result<T, WebError>;
 
+#[derive(Debug)]
+struct AskamaTemplate<T>(T);
+
 impl From<Report> for WebError {
     fn from(value: Report) -> Self {
         WebError(value)
@@ -190,6 +195,13 @@ fn routes(cnx: CancellationToken, client: BankDataClient, expected_requisition_i
             client,
             expected_requisition_id,
         })
+}
+
+#[derive(Template)]
+#[template(path = "auth_start.html")]
+struct StartTemplate {
+    url: http::uri::Uri,
+    status: RequisitionStatus,
 }
 
 #[instrument(skip_all, fields(
@@ -213,15 +225,18 @@ async fn handle_redirect(
     debug!(?requisition, "Got requisition",);
 
     match requisition.status {
-        RequisitionStatus::Created => {
-            debug!(link=?requisition.link, "Created; redirecting");
-            let mut headers = HeaderMap::new();
-            headers.insert(
-                LOCATION,
-                HeaderValue::from_str(&requisition.link).context("location header value")?,
-            );
-            let resp = (StatusCode::SEE_OTHER, headers).into_response();
-            return Ok(resp);
+        RequisitionStatus::Created
+        | RequisitionStatus::GivingConsent
+        | RequisitionStatus::UndergoingAuthentication
+        | RequisitionStatus::SelectingAccounts
+        | RequisitionStatus::GrantingAccess => {
+            debug!(link=?requisition.link, "Created; showing page");
+            let t = StartTemplate {
+                status: requisition.status,
+                url: requisition.link.parse().context("parse requisition link")?,
+            };
+
+            return Ok(AskamaTemplate(t).into_response());
         }
         RequisitionStatus::Linked => {
             info!("Received confirmation");
@@ -237,5 +252,48 @@ impl IntoResponse for WebError {
     fn into_response(self) -> Response {
         error!(error=?self.0, "Error handling request");
         (StatusCode::INTERNAL_SERVER_ERROR, "Error handling response").into_response()
+    }
+}
+
+impl<T: Template> IntoResponse for AskamaTemplate<T> {
+    fn into_response(self) -> Response {
+        match self.0.render() {
+            Ok(html) => Html(html).into_response(),
+            Err(err) => WebError::from(Report::from(err)).into_response(),
+        }
+    }
+}
+
+impl fmt::Display for RequisitionStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RequisitionStatus::Created => f.write_str("Created"),
+            RequisitionStatus::GivingConsent => f.write_str("GivingConsent"),
+            RequisitionStatus::UndergoingAuthentication => f.write_str("UndergoingAuthentication"),
+            RequisitionStatus::Rejected => f.write_str("Rejected"),
+            RequisitionStatus::SelectingAccounts => f.write_str("SelectingAccounts"),
+            RequisitionStatus::GrantingAccess => f.write_str("GrantingAccess"),
+            RequisitionStatus::Linked => f.write_str("Linked"),
+            RequisitionStatus::Expired => f.write_str("Expired"),
+        }
+    }
+}
+
+mod filters {
+    use askama::{filters::Safe, Values};
+    use qrcode::{render::svg, QrCode};
+
+    pub(super) fn qrcode_svg(value: impl ToString, _: &dyn Values) -> askama::Result<Safe<String>> {
+        let value = value.to_string();
+
+        let code = QrCode::new(&value).map_err(|e| askama::Error::Custom(Box::new(e)))?;
+        let image = code
+            .render()
+            .min_dimensions(200, 200)
+            .dark_color(svg::Color("#000"))
+            .light_color(svg::Color("#fff"))
+            .build();
+
+        Ok(Safe(image))
     }
 }

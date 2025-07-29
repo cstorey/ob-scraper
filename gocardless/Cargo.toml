@@ -5,12 +5,14 @@ edition = "2021"
 
 [dependencies]
 again = { workspace = true }
+askama = { workspace = true }
 axum = { workspace = true }
 axum-extra = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 color-eyre = { workspace = true }
 http = { workspace = true }
+qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
 reqwest = { workspace = true }
 rust_decimal = { workspace = true }
 serde = { workspace = true }
