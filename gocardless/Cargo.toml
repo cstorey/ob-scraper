@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 again = { workspace = true }
+askama = { workspace = true }
 axum = { workspace = true }
 axum-extra = { workspace = true }
 chrono = { workspace = true }

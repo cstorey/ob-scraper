@@ -747,6 +747,7 @@ name = "gc-scraper"
 version = "0.1.0"
 dependencies = [
  "again",
+ "askama",
  "axum",
  "axum-extra",
  "chrono",
