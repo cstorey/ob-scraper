@@ -90,7 +90,7 @@ impl Cmd {
         }
 
         let end_date = Local::now().date_naive();
-        let mut start_date = end_date - provider_config.history_days();
+        let mut start_date = end_date - provider_config.history_days() + Days::new(1);
         if start_date.day() > 1 {
             start_date = start_date + Months::new(1);
             start_date = start_date - Days::new(start_date.day0().into());
